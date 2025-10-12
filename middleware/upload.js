@@ -3,10 +3,11 @@ import path from "path";
 import fs from "fs";
 
 // 📂 S'assurer que le dossier uploads existe
-const uploadDir = "uploads/";
+const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
+  fs.mkdirSync(uploadDir, { recursive: true });
 }
+
 
 // ⚙️ Configuration du stockage
 const storage = multer.diskStorage({
