@@ -102,7 +102,6 @@ io.on("connection", async (socket) => {
     console.log(`📤 User ${socket.userId} left conversation ${conversationId}`);
   });
 
-  // --- 4️⃣ Envoi de message ---
 // --- 4️⃣ Envoi de message via Socket.io ---
 socket.on("sendMessage", async ({ conversationId, recipientId, content, attachments }) => {
   try {
@@ -156,6 +155,38 @@ socket.on("sendMessage", async ({ conversationId, recipientId, content, attachme
 
   } catch (err) {
     console.error("❌ sendMessage socket error:", err);
+  }
+});
+//  Supprimer message
+socket.on("deleteMessage", async ({ messageId }) => {
+  try {
+    const message = await Message.findById(messageId);
+    if (!message) return;
+
+    // Vérifier que l'utilisateur est l'auteur
+    if (message.sender.toString() !== socket.userId) return;
+
+    const conversationId = message.conversation;
+
+    // Supprimer le message
+    await message.deleteOne();
+
+    // Vérifier si c'était le dernier message de la conversation
+    const lastMsg = await Message.find({ conversation: conversationId })
+      .sort({ createdAt: -1 })
+      .limit(1);
+
+    let newLastMessageId = lastMsg.length > 0 ? lastMsg[0]._id : null;
+
+    // Mettre à jour la conversation
+    await Conversation.findByIdAndUpdate(conversationId, { lastMessage: newLastMessageId });
+
+    // Émettre à tous les participants
+    io.to(conversationId.toString()).emit("messageDeleted", messageId);
+    // io.to(conversationId.toString()).emit("conversationUpdated", conversationId);
+
+  } catch (err) {
+    console.error("❌ deleteMessage error:", err);
   }
 });
 
@@ -228,58 +259,6 @@ socket.on("sendMessage", async ({ conversationId, recipientId, content, attachme
       }
     }
   });
-});
-app.post("/api/messages/test",upload.array("attachments"), async (req, res) => {
-  try {
-     console.log("BODY:", req.body);
-    console.log("FILES:", req.files);
-
-    const { conversationId, recipientId, content, senderId } = req.body;
-    const files = req.files || [];
-
-    if (!senderId || (!content && files.length === 0))
-      return res.status(400).json({ error: "Message invalide" });
-
-    let convId = conversationId;
-    if (!convId) {
-      let existingConv = await Conversation.findOne({
-        participants: { $all: [senderId, recipientId] },
-      });
-
-      if (!existingConv) {
-        existingConv = await Conversation.create({
-          participants: [senderId, recipientId],
-        });
-      }
-
-      convId = existingConv._id;
-    }
-    const attachments = files.map((f) => ({
-      url: `/uploads/${f.filename}`,
-      type: "image",
-      name: f.originalname,
-      size: f.size,
-    }));
-
-    const message = await Message.create({
-      conversation: convId,
-      sender: senderId,
-      content,
-      attachments,
-    });
-
-    await Conversation.findByIdAndUpdate(convId, {
-      lastMessage: message._id,
-      updatedAt: Date.now(),
-    });
-
-    const populated = await Message.findById(message._id).populate("sender", "username avatar");
-
-    res.json(populated);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
 });
 
 

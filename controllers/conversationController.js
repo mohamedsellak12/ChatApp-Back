@@ -1,4 +1,5 @@
 import Conversation from "../models/Conversation.js";
+import Message from "../models/Message.js";
 
 export const createOrGetConversation = async (req, res) => {
   try {
@@ -26,20 +27,41 @@ export const createOrGetConversation = async (req, res) => {
 export const getUserConversations = async (req, res) => {
   try {
     const userId = req.user.id;
+
+    // 🔹 Charger toutes les conversations où l'utilisateur participe
     const convs = await Conversation.find({ participants: userId })
-      .sort({ updatedAt: -1 })
       .populate("participants", "username avatar status")
-       .populate({
-        path: "lastMessage",              // on lie le dernier message
-        populate: {
-          path: "sender",                 // et on peuple aussi l’expéditeur
-          select: "username avatar",      // on sélectionne juste ce qui est utile
-        },
+      .populate({
+        path: "lastMessage",
+        populate: { path: "sender", select: "username avatar" },
+      });
+
+    // 🔹 Calculer le nombre de messages non lus pour chaque conversation
+    const convsWithUnread = await Promise.all(
+      convs.map(async (conv) => {
+        const unreadCount = await Message.countDocuments({
+          conversation: conv._id,
+          sender: { $ne: userId }, // messages venant des autres
+          seen: false,
+        });
+
+        return {
+          ...conv.toObject(),
+          unreadCount,
+        };
       })
-   
-    res.json(convs);
+    );
+
+    // 🔹 Trier les conversations par date du dernier message
+    const sortedConvs = convsWithUnread.sort((a, b) => {
+      const dateA = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt) : 0;
+      const dateB = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt) : 0;
+      return dateB - dateA; // plus récent en premier
+    });
+
+    res.json(sortedConvs);
   } catch (err) {
-    console.error(err);
+    console.error("❌ Erreur getUserConversations :", err);
     res.status(500).json({ message: err.message });
   }
 };
