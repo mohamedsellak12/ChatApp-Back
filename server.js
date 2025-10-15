@@ -25,7 +25,7 @@ import upload from "./middleware/upload.js";
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || "JWT_SECRET";
-const MONGO = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/chatapp";
+const MONGO = process.env.MONGO_URI || "mongodb+srv://e2d8d81437_db_user:ZIT9U5eHmsX6XeQd@cluster0.p0f5oaf.mongodb.net/";
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -189,6 +189,43 @@ socket.on("deleteMessage", async ({ messageId }) => {
     console.error("❌ deleteMessage error:", err);
   }
 });
+
+// socket.io -> dans io.on("connection")
+socket.on("updateMessage", async ({ messageId, content }) => {
+  try {
+    const message = await Message.findById(messageId);
+    if (!message) return;
+
+    // Vérifier que l'utilisateur est bien l'auteur du message
+    if (message.sender.toString() !== socket.userId) return;
+
+    // Mettre à jour le message
+    message.content = content;
+    message.updatedAt = new Date();
+    await message.save();
+
+    // Recharger le message complet avec le sender
+    const updatedMessage = await Message.findById(messageId)
+      .populate("sender", "username avatar");
+
+    // 🔹 Vérifier si c’est le dernier message de la conversation
+    const conversation = await Conversation.findById(message.conversation);
+
+    if (conversation && conversation.lastMessage?.toString() === message._id.toString()) {
+      conversation.lastMessage = message._id; // on pourrait aussi déjà être bon ici
+      conversation.updatedAt = new Date();
+      await conversation.save();
+    }
+
+    // 🔥 Notifier tous les participants
+    io.to(message.conversation.toString()).emit("messageUpdated", updatedMessage);
+
+  } catch (err) {
+    console.error("❌ updateMessage error:", err);
+  }
+});
+
+
 
 
 

@@ -28,7 +28,7 @@ export const getUserConversations = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 🔹 Charger toutes les conversations où l'utilisateur participe
+    // 🔹 Charger les conversations avec leurs participants et dernier message
     const convs = await Conversation.find({ participants: userId })
       .populate("participants", "username avatar status")
       .populate({
@@ -36,8 +36,8 @@ export const getUserConversations = async (req, res) => {
         populate: { path: "sender", select: "username avatar" },
       });
 
-    // 🔹 Calculer le nombre de messages non lus pour chaque conversation
-    const convsWithUnread = await Promise.all(
+    // 🔹 Ajouter les infos sur les messages non lus et si la conversation est lue
+    const convsWithStatus = await Promise.all(
       convs.map(async (conv) => {
         const unreadCount = await Message.countDocuments({
           conversation: conv._id,
@@ -45,18 +45,22 @@ export const getUserConversations = async (req, res) => {
           seen: false,
         });
 
+        // 🔸 Déterminer si la conversation est considérée comme "lue"
+        const isReaded = unreadCount === 0;
+
         return {
           ...conv.toObject(),
           unreadCount,
+          isReaded,
         };
       })
     );
 
-    // 🔹 Trier les conversations par date du dernier message
-    const sortedConvs = convsWithUnread.sort((a, b) => {
+    // 🔹 Trier par dernier message (plus récent en premier)
+    const sortedConvs = convsWithStatus.sort((a, b) => {
       const dateA = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt) : 0;
       const dateB = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt) : 0;
-      return dateB - dateA; // plus récent en premier
+      return dateB - dateA;
     });
 
     res.json(sortedConvs);
