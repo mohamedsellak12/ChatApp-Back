@@ -5,7 +5,7 @@ import { getIO } from "../utils/socket.js";
 
 
 const JWT_SECRET = process.env.JWT_SECRET || "ah38f!d9saD@29sd0fas93jf!0fj2F3KjF";
-const TOKEN_EXPIRES = process.env.JWT_EXPIRES || "1d";
+const TOKEN_EXPIRES = process.env.JWT_EXPIRES || "7d";
 
 
 // helper to build user DTO (no password)
