@@ -13,6 +13,7 @@ import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/userRoutes.js";
 import conversationRoutes from "./routes/conversationRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
+import storyRouter from "./routes/storyRoutes.js"
 
 // 🧩 Modèles
 import User from "./models/User.js";
@@ -20,6 +21,7 @@ import Message from "./models/Message.js";
 import Conversation from "./models/Conversation.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import upload from "./middleware/upload.js";
+import Story from "./models/Story.js";
 
 // ⚙️ Config
 dotenv.config();
@@ -225,10 +227,6 @@ socket.on("updateMessage", async ({ messageId, content }) => {
   }
 });
 
-
-
-
-
   // --- 5️⃣ Indicateur de saisie ---
   socket.on("typing", ({ conversationId }) => {
     if (!conversationId) return;
@@ -280,6 +278,67 @@ socket.on("updateMessage", async ({ messageId, content }) => {
     }
   });
 
+  socket.on("addStory", async ({ mediaUrl, type = "image", caption = "" }) => {
+    try {
+     const userId = socket.userId;
+     if (!userId || !mediaUrl) return;
+
+    // ✅ Créer la story selon ton schema
+    const story = await Story.create({
+      user: userId,
+      media: {
+        url: mediaUrl,
+        type, // "image" ou "video"
+      },
+      caption,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // expire dans 24h
+    });
+
+    // 🔄 Récupérer la story avec infos utilisateur
+    const populatedStory = await Story.findById(story._id)
+      .populate("user", "username avatar status");
+
+    // 🔥 Notifier tous les utilisateurs (ou amis plus tard)
+    io.emit("newStory", populatedStory);
+
+    console.log(`📸 Nouvelle story ajoutée par ${userId}`);
+  } catch (err) {
+    console.error("❌ addStory error:", err);
+  }
+});
+
+socket.on("storyViewed", async ({ storyId }) => {
+  try {
+    const userId = socket.userId;
+    if (!storyId || !userId) return;
+
+    const story = await Story.findById(storyId);
+    if (!story) return;
+
+    // Vérifie si l'utilisateur n'a pas déjà vu
+    const alreadyViewed = story.viewers.some(
+      (v) => v.user.toString() === userId
+    );
+    if (!alreadyViewed) {
+     await Story.findByIdAndUpdate(
+         storyId,
+             { $addToSet: { viewers: { user: userId, viewedAt: new Date() } } }
+        );
+
+      // Notifier le propriétaire
+      io.to(story.user.toString()).emit("storyViewedByUser", {
+        storyId,
+        viewerId: userId,
+      });
+    }
+  } catch (err) {
+    console.error("❌ storyViewed error:", err);
+  }
+});
+
+
+
+
   // --- 7️⃣ Déconnexion ---
   socket.on("disconnect", async () => {
     if (socket.userId) {
@@ -304,6 +363,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/conversations", conversationRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/stories", storyRouter)
 app.use("/api", uploadRoutes);
 
 // 🗄️ Connexion MongoDB + démarrage serveur
