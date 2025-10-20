@@ -50,7 +50,7 @@ export const getStoriesForCurrentUser = async (req, res) => {
     // 🧩 Récupérer toutes les stories non expirées
     const stories = await Story.find({ user: userId , expiresAt: { $gt: now } })
       .populate("user", "username avatar") // pour afficher les infos du créateur
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: 1 });
 
    
 
